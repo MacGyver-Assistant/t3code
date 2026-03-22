@@ -157,7 +157,73 @@ function toPosixRelativePath(input: string): string {
   return input.replaceAll("\\", "/");
 }
 
-function resolveWorkspaceWritePath(params: {
+function inferEditorLanguageFromPath(filePath: string): string {
+  const normalizedPath = filePath.trim().toLowerCase();
+  const baseName = normalizedPath.split("/").at(-1) ?? normalizedPath;
+
+  if (baseName === "dockerfile") return "dockerfile";
+  if (baseName === "makefile") return "makefile";
+  if (baseName === "justfile") return "plaintext";
+
+  const extension = normalizedPath.split(".").at(-1);
+  switch (extension) {
+    case "ts":
+    case "mts":
+    case "cts":
+      return "typescript";
+    case "tsx":
+      return "typescript";
+    case "js":
+    case "mjs":
+    case "cjs":
+      return "javascript";
+    case "jsx":
+      return "javascript";
+    case "json":
+      return "json";
+    case "md":
+    case "mdx":
+      return "markdown";
+    case "css":
+      return "css";
+    case "scss":
+      return "scss";
+    case "html":
+      return "html";
+    case "yml":
+    case "yaml":
+      return "yaml";
+    case "sh":
+    case "bash":
+      return "shell";
+    case "sql":
+      return "sql";
+    case "py":
+      return "python";
+    case "rs":
+      return "rust";
+    case "go":
+      return "go";
+    case "java":
+      return "java";
+    case "kt":
+      return "kotlin";
+    case "php":
+      return "php";
+    case "rb":
+      return "ruby";
+    case "xml":
+      return "xml";
+    case "toml":
+      return "toml";
+    case "ini":
+      return "ini";
+    default:
+      return "plaintext";
+  }
+}
+
+function resolveWorkspacePath(params: {
   workspaceRoot: string;
   relativePath: string;
   path: Path.Path;
@@ -748,9 +814,28 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         });
       }
 
+      case WS_METHODS.projectsReadFile: {
+        const body = stripRequestTag(request.body);
+        const target = yield* resolveWorkspacePath({
+          workspaceRoot: body.cwd,
+          relativePath: body.relativePath,
+          path,
+        });
+        const contents = yield* fileSystem.readFileString(target.absolutePath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new RouteRequestError({
+                message: `Failed to read workspace file: ${String(cause)}`,
+              }),
+          ),
+        );
+        const language = inferEditorLanguageFromPath(target.relativePath);
+        return { contents, language, relativePath: target.relativePath };
+      }
+
       case WS_METHODS.projectsWriteFile: {
         const body = stripRequestTag(request.body);
-        const target = yield* resolveWorkspaceWritePath({
+        const target = yield* resolveWorkspacePath({
           workspaceRoot: body.cwd,
           relativePath: body.relativePath,
           path,

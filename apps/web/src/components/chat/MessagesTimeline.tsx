@@ -73,6 +73,7 @@ interface MessagesTimelineProps {
   expandedWorkGroups: Record<string, boolean>;
   onToggleWorkGroup: (groupId: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenInEditor?: (filePath: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
@@ -97,6 +98,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   expandedWorkGroups,
   onToggleWorkGroup,
   onOpenTurnDiff,
+  onOpenInEditor,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   isRevertingCheckpoint,
@@ -506,6 +508,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         allDirectoriesExpanded={allDirectoriesExpanded}
                         resolvedTheme={resolvedTheme}
                         onOpenTurnDiff={onOpenTurnDiff}
+                        {...(onOpenInEditor ? { onOpenInEditor } : {})}
                       />
                     </div>
                   );

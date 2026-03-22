@@ -212,6 +212,20 @@ input {
   display: none;
 }
 
+.editor-tab-strip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+}
+
+.editor-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-panel-viewport .monaco-editor .minimap {
+  display: none;
+}
+
 /* Terminal drawer scrollbar parity with chat */
 .thread-terminal-drawer .xterm .xterm-scrollable-element > .scrollbar.vertical {
   width: 6px !important;

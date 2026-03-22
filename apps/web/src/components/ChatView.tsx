@@ -36,6 +36,7 @@ import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
+import { parseEditorRouteSearch, stripEditorSearchParams } from "../editorRouteSearch";
 import {
   clampCollapsedComposerCursor,
   type ComposerTrigger,
@@ -249,7 +250,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
-    select: (params) => parseDiffRouteSearch(params),
+    select: (params) => ({
+      ...parseDiffRouteSearch(params),
+      ...parseEditorRouteSearch(params),
+    }),
   });
   const { resolvedTheme } = useTheme();
   const queryClient = useQueryClient();
@@ -478,6 +482,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const diffOpen = rawSearch.diff === "1";
+  const editorOpen = rawSearch.editor === "1";
   const activeThreadId = activeThread?.id ?? null;
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
@@ -1138,6 +1143,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "diff.toggle"),
     [keybindings],
   );
+  const editorPanelShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "editor.toggle"),
+    [keybindings],
+  );
+  const onToggleEditor = useCallback(() => {
+    void navigate({
+      to: "/$threadId",
+      params: { threadId },
+      replace: true,
+      search: (previous) => {
+        const rest = stripEditorSearchParams(previous);
+        return editorOpen ? { ...rest, editor: undefined } : { ...rest, editor: "1" };
+      },
+    });
+  }, [editorOpen, navigate, threadId]);
   const onToggleDiff = useCallback(() => {
     void navigate({
       to: "/$threadId",
@@ -2165,6 +2185,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "editor.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleEditor();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -2187,6 +2214,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     splitTerminal,
     keybindings,
     onToggleDiff,
+    onToggleEditor,
     toggleTerminalVisibility,
   ]);
 
@@ -3426,6 +3454,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [navigate, threadId],
   );
+  const onOpenInEditor = useCallback(
+    (filePath: string) => {
+      void navigate({
+        to: "/$threadId",
+        params: { threadId },
+        search: (previous) => {
+          const rest = stripEditorSearchParams(previous);
+          return { ...rest, editor: "1", editorFilePath: filePath };
+        },
+      });
+    },
+    [navigate, threadId],
+  );
   const onRevertUserMessage = (messageId: MessageId) => {
     const targetTurnCount = revertTurnCountByUserMessageId.get(messageId);
     if (typeof targetTurnCount !== "number") {
@@ -3481,8 +3522,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
           }
           keybindings={keybindings}
           availableEditors={availableEditors}
+          editorToggleShortcutLabel={editorPanelShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
+          editorOpen={editorOpen}
           diffOpen={diffOpen}
           onRunProjectScript={(script) => {
             void runProjectScript(script);
@@ -3490,6 +3533,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
+          onToggleEditor={onToggleEditor}
           onToggleDiff={onToggleDiff}
         />
       </header>
@@ -3536,6 +3580,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 expandedWorkGroups={expandedWorkGroups}
                 onToggleWorkGroup={onToggleWorkGroup}
                 onOpenTurnDiff={onOpenTurnDiff}
+                onOpenInEditor={onOpenInEditor}
                 revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                 onRevertUserMessage={onRevertUserMessage}
                 isRevertingCheckpoint={isRevertingCheckpoint}
