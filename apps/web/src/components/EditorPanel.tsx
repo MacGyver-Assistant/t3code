@@ -25,7 +25,7 @@ import {
   EditorPanelShell,
   type EditorPanelMode,
 } from "./EditorPanelShell";
-import { useEditorPanelStore } from "~/editorPanelStore";
+import { useEditorPanelStore, makeFileKey } from "~/editorPanelStore";
 
 const EDITOR_OPTIONS = {
   fontSize: 13,
@@ -78,10 +78,10 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
   );
   const activeCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
   const openFiles = useEditorPanelStore((store) => store.openFiles);
-  const activeFilePath = useEditorPanelStore((store) => store.activeFilePath);
+  const activeFileKey = useEditorPanelStore((store) => store.activeFileKey);
   const openFile = useEditorPanelStore((store) => store.openFile);
   const closeFile = useEditorPanelStore((store) => store.closeFile);
-  const setActiveFilePath = useEditorPanelStore((store) => store.setActiveFilePath);
+  const setActiveFileKey = useEditorPanelStore((store) => store.setActiveFileKey);
   const setFileContents = useEditorPanelStore((store) => store.setFileContents);
   const markSaving = useEditorPanelStore((store) => store.markSaving);
   const markSaveSuccess = useEditorPanelStore((store) => store.markSaveSuccess);
@@ -89,8 +89,8 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
 
   const selectedFilePath = editorSearch.editorFilePath ?? null;
   const activeOpenFile = useMemo(
-    () => openFiles.find((file) => file.path === activeFilePath) ?? null,
-    [activeFilePath, openFiles],
+    () => openFiles.find((file) => file.key === activeFileKey) ?? null,
+    [activeFileKey, openFiles],
   );
 
   const fileQuery = useQuery(
@@ -102,23 +102,24 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
   );
 
   useEffect(() => {
-    if (!selectedFilePath || !fileQuery.data) {
+    if (!selectedFilePath || !activeCwd || !fileQuery.data) {
       return;
     }
 
     openFile({
-      path: fileQuery.data.relativePath,
+      cwd: activeCwd,
+      relativePath: fileQuery.data.relativePath,
       contents: fileQuery.data.contents,
       language: fileQuery.data.language,
     });
-  }, [fileQuery.data, openFile, selectedFilePath]);
+  }, [fileQuery.data, openFile, selectedFilePath, activeCwd]);
 
   useEffect(() => {
-    if (!selectedFilePath) {
+    if (!selectedFilePath || !activeCwd) {
       return;
     }
-    setActiveFilePath(selectedFilePath);
-  }, [selectedFilePath, setActiveFilePath]);
+    setActiveFileKey(makeFileKey(activeCwd, selectedFilePath));
+  }, [selectedFilePath, activeCwd, setActiveFileKey]);
 
   const syncScrollButtons = useCallback(() => {
     const element = tabStripRef.current;
@@ -144,14 +145,16 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
   }, [activeThread?.id, navigate, routeThreadId]);
 
   const openEditorFile = useCallback(
-    (path: string | null) => {
+    (relativePath: string | null) => {
       if (!routeThreadId) return;
       void navigate({
         to: "/$threadId",
         params: { threadId: routeThreadId },
         search: (previous) => {
           const rest = stripEditorSearchParams(previous);
-          return path ? { ...rest, editor: "1", editorFilePath: path } : { ...rest, editor: "1" };
+          return relativePath
+            ? { ...rest, editor: "1", editorFilePath: relativePath }
+            : { ...rest, editor: "1" };
         },
       });
     },
@@ -164,17 +167,17 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
     }
 
     const api = ensureNativeApi();
-    markSaving(activeOpenFile.path, true);
+    markSaving(activeOpenFile.key, true);
     try {
       await api.projects.writeFile({
         cwd: activeCwd,
-        relativePath: activeOpenFile.path,
+        relativePath: activeOpenFile.relativePath,
         contents: activeOpenFile.contents,
       });
-      markSaveSuccess(activeOpenFile.path, activeOpenFile.contents);
+      markSaveSuccess(activeOpenFile.key, activeOpenFile.contents);
     } catch (error) {
       setFileError(
-        activeOpenFile.path,
+        activeOpenFile.key,
         error instanceof Error ? error.message : "Failed to save file.",
       );
     }
@@ -227,39 +230,45 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
           onWheel={onEditorWheel}
         >
           {openFiles.map((file) => {
-            const isActive = file.path === activeOpenFile?.path;
+            const isActive = file.key === activeOpenFile?.key;
             const isDirty = file.contents !== file.savedContents;
             return (
-              <button
-                key={file.path}
-                type="button"
+              <div
+                key={file.key}
                 role="tab"
+                tabIndex={0}
                 aria-selected={isActive}
-                aria-label={file.path}
+                aria-label={file.relativePath}
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-background/70 px-2 py-1 text-[11px] font-medium text-muted-foreground/80 transition-colors",
+                  "inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-background/70 px-2 py-1 text-[11px] font-medium text-muted-foreground/80 transition-colors cursor-pointer",
                   isActive && "border-border bg-accent text-accent-foreground",
                 )}
-                onClick={() => openEditorFile(file.path)}
+                onClick={() => openEditorFile(file.relativePath)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openEditorFile(file.relativePath);
+                  }
+                }}
               >
-                <span className="truncate max-w-40">{file.path.split("/").at(-1) ?? file.path}</span>
+                <span className="truncate max-w-40">{file.relativePath.split("/").at(-1) ?? file.relativePath}</span>
                 {isDirty ? <span className="ml-1 text-[8px] text-primary">●</span> : null}
-                <span
-                  role="button"
-                  aria-label={`Close ${file.path}`}
+                <button
+                  type="button"
+                  aria-label={`Close ${file.relativePath}`}
                   className="ml-1 inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground/80 hover:text-foreground"
                   onClick={(event) => {
                     event.stopPropagation();
-                    closeFile(file.path);
-                    if (activeFilePath === file.path) {
-                      const next = openFiles.find((entry) => entry.path !== file.path) ?? null;
-                      openEditorFile(next?.path ?? null);
+                    closeFile(file.key);
+                    if (activeFileKey === file.key) {
+                      const next = openFiles.find((entry) => entry.key !== file.key) ?? null;
+                      openEditorFile(next?.relativePath ?? null);
                     }
                   }}
                 >
                   <XIcon className="size-3" />
-                </span>
-              </button>
+                </button>
+              </div>
             );
           })}
         </div>
@@ -285,19 +294,21 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
     </>
   );
 
+  // Derive content state: loading → error → empty → ready
   let content: ReactNode;
   if (selectedFilePath && fileQuery.isLoading && !activeOpenFile) {
     content = <EditorPanelLoadingState label="Loading editor..." />;
+  } else if (fileQuery.error && !activeOpenFile) {
+    // Error state BEFORE empty state so it's reachable when a read fails
+    content = (
+      <div className="flex flex-1 items-center justify-center px-5 text-center text-[11px] text-destructive-foreground/80">
+        {fileQuery.error instanceof Error ? fileQuery.error.message : "Failed to load file."}
+      </div>
+    );
   } else if (!activeOpenFile) {
     content = (
       <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70" role="status">
         Click a file in the sidebar to open it in the editor.
-      </div>
-    );
-  } else if (fileQuery.error && !activeOpenFile) {
-    content = (
-      <div className="flex flex-1 items-center justify-center px-5 text-center text-[11px] text-destructive-foreground/80">
-        {fileQuery.error instanceof Error ? fileQuery.error.message : "Failed to load file."}
       </div>
     );
   } else {
@@ -309,7 +320,7 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
           </div>
         ) : null}
         <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2 text-[11px] text-muted-foreground/80">
-          <span className="truncate">{activeOpenFile.path}</span>
+          <span className="truncate">{activeOpenFile.relativePath}</span>
           {activeFileIsDirty ? <span className="text-primary">Unsaved changes</span> : null}
           {activeOpenFile.isSaving ? (
             <span className="ml-auto inline-flex items-center gap-1">
@@ -319,13 +330,13 @@ export default function EditorPanel({ mode = "inline" }: EditorPanelProps) {
         </div>
         <Editor
           height="100%"
-          path={activeOpenFile.path}
+          path={activeOpenFile.key}
           language={activeOpenFile.language}
           theme={resolveEditorTheme(resolvedTheme)}
           value={activeOpenFile.contents}
           onMount={onMount}
           onChange={(value) => {
-            setFileContents(activeOpenFile.path, value ?? "");
+            setFileContents(activeOpenFile.key, value ?? "");
           }}
           options={EDITOR_OPTIONS}
         />

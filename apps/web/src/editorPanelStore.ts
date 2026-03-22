@@ -2,7 +2,10 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 interface OpenEditorFile {
-  path: string;
+  /** Unique key: `cwd + ":" + relativePath` */
+  key: string;
+  cwd: string;
+  relativePath: string;
   contents: string;
   savedContents: string;
   language: string;
@@ -12,29 +15,31 @@ interface OpenEditorFile {
 
 interface EditorPanelState {
   openFiles: OpenEditorFile[];
-  activeFilePath: string | null;
+  activeFileKey: string | null;
   openFile: (file: {
-    path: string;
+    cwd: string;
+    relativePath: string;
     contents: string;
     language: string;
   }) => void;
-  closeFile: (path: string) => void;
-  setActiveFilePath: (path: string | null) => void;
-  setFileContents: (path: string, contents: string) => void;
-  markSaving: (path: string, saving: boolean) => void;
-  markSaveSuccess: (path: string, contents: string) => void;
-  setFileError: (path: string, error: string | null) => void;
+  closeFile: (key: string) => void;
+  setActiveFileKey: (key: string | null) => void;
+  setFileContents: (key: string, contents: string) => void;
+  markSaving: (key: string, saving: boolean) => void;
+  markSaveSuccess: (key: string, contents: string) => void;
+  setFileError: (key: string, error: string | null) => void;
   clear: () => void;
 }
 
-const STORAGE_KEY = "t3code:editor-panel-state:v1";
+const STORAGE_KEY = "t3code:editor-panel-state:v2";
 
-function normalizePath(path: string): string {
-  return path.trim();
+/** Build a unique key from cwd + relativePath to avoid cross-worktree collisions. */
+function makeFileKey(cwd: string, relativePath: string): string {
+  return `${cwd.trim()}:${relativePath.trim()}`;
 }
 
 function upsertFile(openFiles: OpenEditorFile[], nextFile: OpenEditorFile): OpenEditorFile[] {
-  const existingIndex = openFiles.findIndex((file) => file.path === nextFile.path);
+  const existingIndex = openFiles.findIndex((file) => file.key === nextFile.key);
   if (existingIndex === -1) {
     return [...openFiles, nextFile];
   }
@@ -46,63 +51,75 @@ export const useEditorPanelStore = create<EditorPanelState>()(
   persist(
     (set) => ({
       openFiles: [],
-      activeFilePath: null,
+      activeFileKey: null,
       openFile: (file) => {
-        const path = normalizePath(file.path);
-        if (path.length === 0) {
+        const cwd = file.cwd.trim();
+        const relativePath = file.relativePath.trim();
+        if (relativePath.length === 0 || cwd.length === 0) {
           return;
         }
 
-        set((state) => ({
-          openFiles: upsertFile(state.openFiles, {
-            path,
-            contents: file.contents,
-            savedContents: file.contents,
-            language: file.language,
-            isSaving: false,
-            error: null,
-          }),
-          activeFilePath: path,
-        }));
-      },
-      closeFile: (path) => {
-        const normalizedPath = normalizePath(path);
+        const key = makeFileKey(cwd, relativePath);
+
         set((state) => {
-          const nextOpenFiles = state.openFiles.filter((file) => file.path !== normalizedPath);
-          const nextActiveFilePath =
-            state.activeFilePath === normalizedPath
-              ? (nextOpenFiles.at(-1)?.path ?? null)
-              : state.activeFilePath;
+          const existingFile = state.openFiles.find((f) => f.key === key);
+          // Preserve local content if file is already open and dirty.
+          // Only seed contents on fresh open — never overwrite a dirty buffer.
+          const isDirty = existingFile
+            ? existingFile.contents !== existingFile.savedContents
+            : false;
+          const contents = isDirty ? existingFile!.contents : file.contents;
+          const savedContents = existingFile && isDirty ? existingFile.savedContents : file.contents;
+
           return {
-            openFiles: nextOpenFiles,
-            activeFilePath: nextActiveFilePath,
+            openFiles: upsertFile(state.openFiles, {
+              key,
+              cwd,
+              relativePath,
+              contents,
+              savedContents,
+              language: file.language,
+              isSaving: false,
+              error: null,
+            }),
+            activeFileKey: key,
           };
         });
       },
-      setActiveFilePath: (path) => {
-        set({ activeFilePath: path ? normalizePath(path) : null });
+      closeFile: (key) => {
+        set((state) => {
+          const nextOpenFiles = state.openFiles.filter((file) => file.key !== key);
+          const nextActiveFileKey =
+            state.activeFileKey === key
+              ? (nextOpenFiles.at(-1)?.key ?? null)
+              : state.activeFileKey;
+          return {
+            openFiles: nextOpenFiles,
+            activeFileKey: nextActiveFileKey,
+          };
+        });
       },
-      setFileContents: (path, contents) => {
-        const normalizedPath = normalizePath(path);
+      setActiveFileKey: (key) => {
+        set({ activeFileKey: key ?? null });
+      },
+      setFileContents: (key, contents) => {
         set((state) => ({
           openFiles: state.openFiles.map((file) =>
-            file.path === normalizedPath ? { ...file, contents, error: null } : file,
+            file.key === key ? { ...file, contents, error: null } : file,
           ),
         }));
       },
-      markSaving: (path, saving) => {
-        const normalizedPath = normalizePath(path);
+      markSaving: (key, saving) => {
         set((state) => ({
           openFiles: state.openFiles.map((file) =>
-            file.path === normalizedPath ? { ...file, isSaving: saving } : file,
+            file.key === key ? { ...file, isSaving: saving } : file,
           ),
         }));
       },
-      markSaveSuccess: (path, contents) => {
-        const normalizedPath = normalizePath(path);
+      markSaveSuccess: (key, contents) => {
         set((state) => ({
           openFiles: state.openFiles.map((file) =>
-            file.path === normalizedPath
+            file.key === key
               ? {
                   ...file,
                   contents,
@@ -114,32 +131,34 @@ export const useEditorPanelStore = create<EditorPanelState>()(
           ),
         }));
       },
-      setFileError: (path, error) => {
-        const normalizedPath = normalizePath(path);
+      setFileError: (key, error) => {
         set((state) => ({
           openFiles: state.openFiles.map((file) =>
-            file.path === normalizedPath ? { ...file, isSaving: false, error } : file,
+            file.key === key ? { ...file, isSaving: false, error } : file,
           ),
         }));
       },
-      clear: () => set({ openFiles: [], activeFilePath: null }),
+      clear: () => set({ openFiles: [], activeFileKey: null }),
     }),
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         openFiles: state.openFiles.map((file) => ({
-          path: file.path,
+          key: file.key,
+          cwd: file.cwd,
+          relativePath: file.relativePath,
           contents: file.contents,
           savedContents: file.savedContents,
           language: file.language,
           isSaving: false,
           error: null,
         })),
-        activeFilePath: state.activeFilePath,
+        activeFileKey: state.activeFileKey,
       }),
     },
   ),
 );
 
+export { makeFileKey };
 export type { OpenEditorFile };
