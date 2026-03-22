@@ -1237,6 +1237,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: true, // Required for Browser panel webview
     },
   });
 

@@ -37,6 +37,10 @@ import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuer
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
+  parseBrowserRouteSearch,
+  stripBrowserSearchParams,
+} from "../browserRouteSearch";
+import {
   clampCollapsedComposerCursor,
   type ComposerTrigger,
   collapseExpandedComposerCursor,
@@ -249,7 +253,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
-    select: (params) => parseDiffRouteSearch(params),
+    select: (params) => ({
+      ...parseDiffRouteSearch(params),
+      ...parseBrowserRouteSearch(params),
+    }),
   });
   const { resolvedTheme } = useTheme();
   const queryClient = useQueryClient();
@@ -478,6 +485,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const diffOpen = rawSearch.diff === "1";
+  const browserOpen = rawSearch.browser === "1";
   const activeThreadId = activeThread?.id ?? null;
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
@@ -1138,6 +1146,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "diff.toggle"),
     [keybindings],
   );
+  const browserPanelShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "browser.toggle"),
+    [keybindings],
+  );
   const onToggleDiff = useCallback(() => {
     void navigate({
       to: "/$threadId",
@@ -1149,6 +1161,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
       },
     });
   }, [diffOpen, navigate, threadId]);
+
+  const onToggleBrowser = useCallback(() => {
+    void navigate({
+      to: "/$threadId",
+      params: { threadId },
+      replace: true,
+      search: (previous) => {
+        const rest = stripBrowserSearchParams(previous);
+        return browserOpen ? { ...rest, browser: undefined } : { ...rest, browser: "1" };
+      },
+    });
+  }, [browserOpen, navigate, threadId]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -2165,6 +2189,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "browser.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleBrowser();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -2186,6 +2217,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     runProjectScript,
     splitTerminal,
     keybindings,
+    onToggleBrowser,
     onToggleDiff,
     toggleTerminalVisibility,
   ]);
@@ -3482,8 +3514,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
           keybindings={keybindings}
           availableEditors={availableEditors}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
+          browserToggleShortcutLabel={browserPanelShortcutLabel}
           gitCwd={gitCwd}
           diffOpen={diffOpen}
+          browserOpen={browserOpen}
           onRunProjectScript={(script) => {
             void runProjectScript(script);
           }}
@@ -3491,6 +3525,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
           onToggleDiff={onToggleDiff}
+          onToggleBrowser={onToggleBrowser}
         />
       </header>
 
