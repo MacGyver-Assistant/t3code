@@ -6,7 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
-import { CodeXmlIcon, DiffIcon } from "lucide-react";
+import { CodeXmlIcon, DiffIcon, GlobeIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -26,15 +26,18 @@ interface ChatHeaderProps {
   availableEditors: ReadonlyArray<EditorId>;
   editorToggleShortcutLabel: string | null;
   diffToggleShortcutLabel: string | null;
+  browserToggleShortcutLabel: string | null;
   gitCwd: string | null;
   editorOpen: boolean;
   diffOpen: boolean;
+  browserOpen: boolean;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
   onToggleEditor: () => void;
   onToggleDiff: () => void;
+  onToggleBrowser: () => void;
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -49,15 +52,18 @@ export const ChatHeader = memo(function ChatHeader({
   availableEditors,
   editorToggleShortcutLabel,
   diffToggleShortcutLabel,
+  browserToggleShortcutLabel,
   gitCwd,
   editorOpen,
   diffOpen,
+  browserOpen,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
   onToggleEditor,
   onToggleDiff,
+  onToggleBrowser,
 }: ChatHeaderProps) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -143,6 +149,27 @@ export const ChatHeader = memo(function ChatHeader({
               : diffToggleShortcutLabel
                 ? `Toggle diff panel (${diffToggleShortcutLabel})`
                 : "Toggle diff panel"}
+          </TooltipPopup>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0"
+                pressed={browserOpen}
+                onPressedChange={onToggleBrowser}
+                aria-label="Toggle browser panel"
+                variant="outline"
+                size="xs"
+              >
+                <GlobeIcon className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            {browserToggleShortcutLabel
+              ? `Toggle browser panel (${browserToggleShortcutLabel})`
+              : "Toggle browser panel"}
           </TooltipPopup>
         </Tooltip>
       </div>

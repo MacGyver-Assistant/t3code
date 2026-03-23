@@ -481,3 +481,11 @@ label:has(> select#reasoning-effort) select {
   -webkit-background-clip: text;
   animation: ultrathink-rainbow 10s linear infinite;
 }
+
+
+/* Browser panel loading bar animation */
+@keyframes browser-loading {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}

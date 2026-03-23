@@ -38,6 +38,10 @@ import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import { parseEditorRouteSearch, stripEditorSearchParams } from "../editorRouteSearch";
 import {
+  parseBrowserRouteSearch,
+  stripBrowserSearchParams,
+} from "../browserRouteSearch";
+import {
   clampCollapsedComposerCursor,
   type ComposerTrigger,
   collapseExpandedComposerCursor,
@@ -253,6 +257,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     select: (params) => ({
       ...parseDiffRouteSearch(params),
       ...parseEditorRouteSearch(params),
+      ...parseBrowserRouteSearch(params),
     }),
   });
   const { resolvedTheme } = useTheme();
@@ -483,6 +488,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const diffOpen = rawSearch.diff === "1";
   const editorOpen = rawSearch.editor === "1";
+  const browserOpen = rawSearch.browser === "1";
   const activeThreadId = activeThread?.id ?? null;
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
@@ -1147,6 +1153,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "editor.toggle"),
     [keybindings],
   );
+  const browserPanelShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "browser.toggle"),
+    [keybindings],
+  );
   const onToggleEditor = useCallback(() => {
     void navigate({
       to: "/$threadId",
@@ -1169,6 +1179,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
       },
     });
   }, [diffOpen, navigate, threadId]);
+
+  const onToggleBrowser = useCallback(() => {
+    void navigate({
+      to: "/$threadId",
+      params: { threadId },
+      replace: true,
+      search: (previous) => {
+        const rest = stripBrowserSearchParams(previous);
+        return browserOpen ? { ...rest, browser: undefined } : { ...rest, browser: "1" };
+      },
+    });
+  }, [browserOpen, navigate, threadId]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -2192,6 +2214,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "browser.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleBrowser();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -2213,6 +2242,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     runProjectScript,
     splitTerminal,
     keybindings,
+    onToggleBrowser,
     onToggleDiff,
     onToggleEditor,
     toggleTerminalVisibility,
@@ -3524,9 +3554,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
           availableEditors={availableEditors}
           editorToggleShortcutLabel={editorPanelShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
+          browserToggleShortcutLabel={browserPanelShortcutLabel}
           gitCwd={gitCwd}
           editorOpen={editorOpen}
           diffOpen={diffOpen}
+          browserOpen={browserOpen}
           onRunProjectScript={(script) => {
             void runProjectScript(script);
           }}
@@ -3535,6 +3567,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onDeleteProjectScript={deleteProjectScript}
           onToggleEditor={onToggleEditor}
           onToggleDiff={onToggleDiff}
+          onToggleBrowser={onToggleBrowser}
         />
       </header>
 
