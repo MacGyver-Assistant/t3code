@@ -63,8 +63,13 @@ export function BrowserWebview({
 
     const handleNewWindow = (event: any) => {
       event.preventDefault();
-      // Open external links in system browser if available
-      if (typeof window !== "undefined" && (window as any).nativeApi?.shell?.openExternal) {
+      // Validate URL before opening externally — block file://, javascript://, data://, etc.
+      if (
+        typeof event.url === "string" &&
+        isValidBrowserUrl(event.url) &&
+        typeof window !== "undefined" &&
+        (window as any).nativeApi?.shell?.openExternal
+      ) {
         (window as any).nativeApi.shell.openExternal(event.url);
       }
     };

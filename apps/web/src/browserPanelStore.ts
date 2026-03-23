@@ -2,14 +2,12 @@ import { create } from "zustand";
 
 export interface BrowserPanelState {
   url: string;
-  inputUrl: string;
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   error: string | null;
 
   setUrl: (url: string) => void;
-  setInputUrl: (url: string) => void;
   setLoading: (loading: boolean) => void;
   setNavState: (canGoBack: boolean, canGoForward: boolean) => void;
   setError: (error: string | null) => void;
@@ -20,21 +18,18 @@ const DEFAULT_URL = "http://localhost:3000";
 
 export const useBrowserPanelStore = create<BrowserPanelState>((set) => ({
   url: DEFAULT_URL,
-  inputUrl: DEFAULT_URL,
   isLoading: false,
   canGoBack: false,
   canGoForward: false,
   error: null,
 
-  setUrl: (url) => set({ url, inputUrl: url, error: null }),
-  setInputUrl: (inputUrl) => set({ inputUrl }),
+  setUrl: (url) => set({ url, error: null }),
   setLoading: (isLoading) => set({ isLoading }),
   setNavState: (canGoBack, canGoForward) => set({ canGoBack, canGoForward }),
   setError: (error) => set({ error, isLoading: false }),
   reset: () =>
     set({
       url: DEFAULT_URL,
-      inputUrl: DEFAULT_URL,
       isLoading: false,
       canGoBack: false,
       canGoForward: false,
